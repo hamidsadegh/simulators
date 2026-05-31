@@ -57,6 +57,11 @@ def _add_alias(command_table: dict[str, CommandResult], alias: str, target: str)
         command_table.setdefault(_normalize_command(alias), target_result)
 
 
+def _add_show_aliases(command_table: dict[str, CommandResult], aliases: dict[str, str]) -> None:
+    for alias, target in aliases.items():
+        _add_alias(command_table, alias, target)
+
+
 def _load_catalog_profile(key: str, filename: str) -> DeviceProfile:
     hostname, command_table = _parse_command_catalog(CATALOG_DIR / filename)
     command_table[_normalize_command("terminal length 0")] = CommandResult(stdout="")
@@ -66,12 +71,109 @@ def _load_catalog_profile(key: str, filename: str) -> DeviceProfile:
     _add_alias(command_table, "show run", "show running-config")
     _add_alias(command_table, "sh run", "show running-config")
     _add_alias(command_table, "show startup", "show startup-config")
+    _add_show_aliases(
+        command_table,
+        {
+            "sh ver": "show version",
+            "sh version": "show version",
+            "sh run": "show running-config",
+            "sh inventory": "show inventory",
+            "sh logging": "show logging",
+            "sh cdp neighbors": "show cdp neighbors",
+            "sh cdp neighbors detail": "show cdp neighbors detail",
+            "sh vlan": "show vlan",
+            "sh vlan brief": "show vlan brief",
+            "show mac address table": "show mac address-table",
+            "sh mac address-table": "show mac address-table",
+            "sh mac address table": "show mac address-table",
+            "show mac table": "show mac address-table",
+            "sh mac table": "show mac address-table",
+            "show spanning tree": "show spanning-tree",
+            "sh spanning-tree": "show spanning-tree",
+            "sh spanning tree": "show spanning-tree",
+        },
+    )
 
     if key == "nxos":
         _add_alias(command_table, "show logging last 50", "show logging last 100")
         _add_alias(command_table, "show interface port-channel summary", "show port-channel summary")
+        _add_show_aliases(
+            command_table,
+            {
+                "show interfaces": "show interface",
+                "show interfaces brief": "show interface brief",
+                "show interfaces status": "show interface status",
+                "show interfaces description": "show interface description",
+                "show interfaces counters": "show interface counters",
+                "show interfaces counters errors": "show interface counters errors",
+                "show interfaces transceiver": "show interface transceiver",
+                "show interfaces transceiver details": "show interface transceiver details",
+                "show interfaces switchport": "show interface switchport",
+                "show interfaces trunk": "show interface trunk",
+                "show int": "show interface",
+                "show int brief": "show interface brief",
+                "show int status": "show interface status",
+                "show int description": "show interface description",
+                "show int counters": "show interface counters",
+                "show int counters errors": "show interface counters errors",
+                "show int transceiver": "show interface transceiver",
+                "show int transceiver details": "show interface transceiver details",
+                "show int switchport": "show interface switchport",
+                "show int trunk": "show interface trunk",
+                "sh int": "show interface",
+                "sh int brief": "show interface brief",
+                "sh int status": "show interface status",
+                "sh int description": "show interface description",
+                "sh int counters": "show interface counters",
+                "sh int counters errors": "show interface counters errors",
+                "sh int transceiver": "show interface transceiver",
+                "sh int transceiver details": "show interface transceiver details",
+                "sh int switchport": "show interface switchport",
+                "sh int trunk": "show interface trunk",
+            },
+        )
     elif key == "iosxe":
         _add_alias(command_table, "show interfaces counter", "show interfaces counters")
+        _add_show_aliases(
+            command_table,
+            {
+                "show interface": "show interfaces",
+                "show interface status": "show interfaces status",
+                "show interface description": "show interfaces description",
+                "show interface counters": "show interfaces counters",
+                "show interface counter": "show interfaces counters",
+                "show interface trunk": "show interfaces trunk",
+                "show interface switchport": "show interfaces switchport",
+                "show int": "show interfaces",
+                "show int status": "show interfaces status",
+                "show int description": "show interfaces description",
+                "show int counters": "show interfaces counters",
+                "show int counter": "show interfaces counters",
+                "show int trunk": "show interfaces trunk",
+                "show int switchport": "show interfaces switchport",
+                "sh interfaces": "show interfaces",
+                "sh interfaces status": "show interfaces status",
+                "sh interfaces description": "show interfaces description",
+                "sh interfaces counters": "show interfaces counters",
+                "sh interfaces counter": "show interfaces counters",
+                "sh interfaces trunk": "show interfaces trunk",
+                "sh interfaces switchport": "show interfaces switchport",
+                "sh interface": "show interfaces",
+                "sh interface status": "show interfaces status",
+                "sh interface description": "show interfaces description",
+                "sh interface counters": "show interfaces counters",
+                "sh interface counter": "show interfaces counters",
+                "sh interface trunk": "show interfaces trunk",
+                "sh interface switchport": "show interfaces switchport",
+                "sh int": "show interfaces",
+                "sh int status": "show interfaces status",
+                "sh int description": "show interfaces description",
+                "sh int counters": "show interfaces counters",
+                "sh int counter": "show interfaces counters",
+                "sh int trunk": "show interfaces trunk",
+                "sh int switchport": "show interfaces switchport",
+            },
+        )
 
     return DeviceProfile(
         key=key,

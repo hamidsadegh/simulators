@@ -16,6 +16,33 @@ def test_nxos_catalog_loads_show_version():
     assert "Cisco Nexus Operating System" in result.stdout
 
 
+def test_iosxe_accepts_common_interface_aliases():
+    simulator = CiscoCommandSimulator(PROFILES["iosxe"])
+
+    canonical = simulator.execute("show interfaces status")
+    assert simulator.execute("show interface status").stdout == canonical.stdout
+    assert simulator.execute("show int status").stdout == canonical.stdout
+    assert simulator.execute("sh int status").stdout == canonical.stdout
+
+
+def test_iosxe_accepts_common_mac_aliases():
+    simulator = CiscoCommandSimulator(PROFILES["iosxe"])
+
+    canonical = simulator.execute("show mac address-table")
+    assert simulator.execute("show mac address table").stdout == canonical.stdout
+    assert simulator.execute("show mac table").stdout == canonical.stdout
+    assert simulator.execute("sh mac table").stdout == canonical.stdout
+
+
+def test_nxos_accepts_common_interface_aliases():
+    simulator = CiscoCommandSimulator(PROFILES["nxos"])
+
+    canonical = simulator.execute("show interface status")
+    assert simulator.execute("show interfaces status").stdout == canonical.stdout
+    assert simulator.execute("show int status").stdout == canonical.stdout
+    assert simulator.execute("sh int status").stdout == canonical.stdout
+
+
 def test_unknown_command_is_rejected():
     result = CiscoCommandSimulator(PROFILES["nxos"]).execute("write erase")
 
