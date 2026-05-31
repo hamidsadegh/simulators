@@ -25,6 +25,27 @@ def test_iosxe_accepts_common_interface_aliases():
     assert simulator.execute("sh int status").stdout == canonical.stdout
 
 
+def test_iosxe_accepts_interface_detail_commands():
+    simulator = CiscoCommandSimulator(PROFILES["iosxe"])
+
+    result = simulator.execute("show interface Gi1/0/1")
+
+    assert result.exit_status == 0
+    assert "GigabitEthernet1/0/1 is up" in result.stdout
+    assert "GigabitEthernet1/0/2 is up" not in result.stdout
+
+
+def test_iosxe_accepts_running_config_interface_commands():
+    simulator = CiscoCommandSimulator(PROFILES["iosxe"])
+
+    result = simulator.execute("show run interface Gi1/0/1")
+
+    assert result.exit_status == 0
+    assert "interface GigabitEthernet1/0/1" in result.stdout
+    assert "description r122 ks-controller" in result.stdout
+    assert "interface GigabitEthernet1/0/2" not in result.stdout
+
+
 def test_iosxe_accepts_common_mac_aliases():
     simulator = CiscoCommandSimulator(PROFILES["iosxe"])
 

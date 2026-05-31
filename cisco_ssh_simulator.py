@@ -62,6 +62,91 @@ def _add_show_aliases(command_table: dict[str, CommandResult], aliases: dict[str
         _add_alias(command_table, alias, target)
 
 
+def _interface_aliases(interface_name: str) -> set[str]:
+    normalized = _normalize_command(interface_name)
+    aliases = {normalized}
+    replacements = (
+        ("gigabitethernet", "gi"),
+        ("tengigabitethernet", "te"),
+        ("twentyfivegige", "tw"),
+        ("fortygigabitethernet", "fo"),
+        ("hundredgige", "hu"),
+        ("fastethernet", "fa"),
+        ("ethernet", "eth"),
+        ("port-channel", "po"),
+    )
+    for long_name, short_name in replacements:
+        if normalized.startswith(long_name):
+            suffix = normalized[len(long_name) :]
+            aliases.add(f"{short_name}{suffix}")
+        if normalized.startswith(short_name):
+            suffix = normalized[len(short_name) :]
+            aliases.add(f"{long_name}{suffix}")
+    return aliases
+
+
+def _extract_running_config_interface(command_table: dict[str, CommandResult], interface_name: str) -> CommandResult | None:
+    running_config = command_table.get(_normalize_command("show running-config")) or command_table.get(_normalize_command("show run"))
+    if not running_config or not running_config.stdout:
+        return None
+
+    aliases = _interface_aliases(interface_name)
+    lines = running_config.stdout.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.lower().startswith("interface "):
+            continue
+        current_interface = stripped.split(None, 1)[1]
+        if _normalize_command(current_interface) not in aliases:
+            continue
+
+        block = []
+        for block_line in lines[index:]:
+            block_stripped = block_line.strip()
+            if block and block_stripped.lower().startswith("interface "):
+                break
+            if block and block_stripped == "!":
+                block.append(block_line)
+                break
+            block.append(block_line)
+        return CommandResult(stdout="\n".join(block).rstrip() + "\n")
+    return None
+
+
+def _extract_show_interface(command_table: dict[str, CommandResult], interface_name: str) -> CommandResult | None:
+    show_interfaces = command_table.get(_normalize_command("show interfaces")) or command_table.get(_normalize_command("show interface"))
+    if not show_interfaces or not show_interfaces.stdout:
+        return None
+
+    aliases = _interface_aliases(interface_name)
+    lines = show_interfaces.stdout.splitlines()
+    interface_header = re.compile(r"^(\S+)\s+is\s+", flags=re.IGNORECASE)
+    for index, line in enumerate(lines):
+        match = interface_header.match(line)
+        if not match or _normalize_command(match.group(1)) not in aliases:
+            continue
+
+        block = []
+        for block_line in lines[index:]:
+            if block and interface_header.match(block_line):
+                break
+            block.append(block_line)
+        return CommandResult(stdout="\n".join(block).rstrip() + "\n")
+    return None
+
+
+def _execute_dynamic_command(command_table: dict[str, CommandResult], normalized: str) -> CommandResult | None:
+    config_match = re.fullmatch(r"(?:show running-config|show run|sh run)\s+interface\s+(.+)", normalized)
+    if config_match:
+        return _extract_running_config_interface(command_table, config_match.group(1))
+
+    interface_match = re.fullmatch(r"(?:show interfaces|show interface|show int|sh interfaces|sh interface|sh int)\s+(.+)", normalized)
+    if interface_match:
+        return _extract_show_interface(command_table, interface_match.group(1))
+
+    return None
+
+
 def _load_catalog_profile(key: str, filename: str) -> DeviceProfile:
     hostname, command_table = _parse_command_catalog(CATALOG_DIR / filename)
     command_table[_normalize_command("terminal length 0")] = CommandResult(stdout="")
@@ -248,7 +333,13 @@ class CiscoCommandSimulator:
         normalized = _normalize_command(command)
         if not normalized:
             return CommandResult(stdout="")
-        return self.profile.command_table.get(normalized, _invalid_command(normalized))
+        exact_result = self.profile.command_table.get(normalized)
+        if exact_result is not None:
+            return exact_result
+        dynamic_result = _execute_dynamic_command(self.profile.command_table, normalized)
+        if dynamic_result is not None:
+            return dynamic_result
+        return _invalid_command(normalized)
 
 
 class _ServerInterface(paramiko.ServerInterface):
