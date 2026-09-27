@@ -1,12 +1,17 @@
 [project]
 name = "cisco-show-command-simulators"
 version = "0.1.0"
-description = "Local Cisco IOS-XE and NX-OS SSH command simulators for NetAdmin Agent development."
+description = "Local Cisco SSH and IOS-XE Plug and Play simulators for ZAS development."
 readme = "README.md"
 requires-python = ">=3.11"
+license = { file = "LICENSE" }
 dependencies = [
   "paramiko>=3.4.0",
 ]
+
+[project.scripts]
+cisco-ssh-simulator = "cisco_ssh_simulator:main"
+cisco-pnp-simulator = "pnp_simulator:main"
 
 [project.optional-dependencies]
 dev = [

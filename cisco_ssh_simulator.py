@@ -136,6 +136,9 @@ def _extract_show_interface(command_table: dict[str, CommandResult], interface_n
 
 
 def _execute_dynamic_command(command_table: dict[str, CommandResult], normalized: str) -> CommandResult | None:
+    if re.fullmatch(r"terminal (?:length|width) \d+", normalized):
+        return CommandResult(stdout="")
+
     config_match = re.fullmatch(r"(?:show running-config|show run|sh run)\s+interface\s+(.+)", normalized)
     if config_match:
         return _extract_running_config_interface(command_table, config_match.group(1))
@@ -348,6 +351,7 @@ class _ServerInterface(paramiko.ServerInterface):
         self.password = password
         self._commands: dict[int, str] = {}
         self._events: dict[int, threading.Event] = {}
+        self._shell_channels: set[int] = set()
 
     def check_auth_password(self, username: str, password: str):
         if username == self.username and password == self.password:
@@ -368,15 +372,39 @@ class _ServerInterface(paramiko.ServerInterface):
         self._events.setdefault(channel_id, threading.Event()).set()
         return True
 
-    def wait_for_command(self, channel_id: int, timeout: float = 5.0) -> str | None:
+    def check_channel_pty_request(
+        self,
+        channel,
+        term,
+        width,
+        height,
+        pixelwidth,
+        pixelheight,
+        modes,
+    ):
+        return True
+
+    def check_channel_shell_request(self, channel):
+        channel_id = channel.get_id()
+        self._shell_channels.add(channel_id)
+        self._events.setdefault(channel_id, threading.Event()).set()
+        return True
+
+    def wait_for_request(
+        self, channel_id: int, timeout: float = 5.0
+    ) -> tuple[str, str] | None:
         event = self._events.setdefault(channel_id, threading.Event())
         if not event.wait(timeout=timeout):
             return None
-        return self._commands.get(channel_id)
+        if channel_id in self._shell_channels:
+            return "shell", ""
+        command = self._commands.get(channel_id)
+        return ("exec", command) if command is not None else None
 
     def clear_command(self, channel_id: int) -> None:
         self._commands.pop(channel_id, None)
         self._events.pop(channel_id, None)
+        self._shell_channels.discard(channel_id)
 
 
 class SimulatorServer:
@@ -451,23 +479,71 @@ class SimulatorServer:
                 if channel is None:
                     continue
                 channel_id = channel.get_id()
-                command = server.wait_for_command(channel_id, timeout=5.0)
-                if command is None:
+                request = server.wait_for_request(channel_id, timeout=5.0)
+                if request is None:
                     channel.send_stderr("No command received\n")
                     channel.send_exit_status(1)
                     channel.close()
                     continue
-                result = self.simulator.execute(command)
-                if result.stdout:
-                    channel.sendall(result.stdout.encode())
-                if result.stderr:
-                    channel.sendall_stderr(result.stderr.encode())
-                channel.send_exit_status(result.exit_status)
-                channel.close()
+                request_type, command = request
+                if request_type == "shell":
+                    self._handle_shell(channel)
+                else:
+                    result = self.simulator.execute(command)
+                    if result.stdout:
+                        channel.sendall(result.stdout.encode())
+                    if result.stderr:
+                        channel.sendall_stderr(result.stderr.encode())
+                    channel.send_exit_status(result.exit_status)
+                    channel.close()
                 server.clear_command(channel_id)
         finally:
             transport.close()
             client_sock.close()
+
+    def _handle_shell(self, channel) -> None:
+        channel.settimeout(0.5)
+        channel.sendall(f"\r\n{self.profile.prompt}".encode())
+        buffer = ""
+        while _transport_active(channel) and not self._stop_event.is_set():
+            try:
+                data = channel.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not data:
+                break
+            buffer += data.decode(errors="replace").replace("\r", "\n")
+            while "\n" in buffer:
+                command, buffer = buffer.split("\n", 1)
+                command = command.strip()
+                channel.sendall(f"{command}\r\n".encode())
+                if command.lower() in {"exit", "logout", "quit"}:
+                    _close_channel(channel)
+                    return
+                result = self.simulator.execute(command)
+                if result.stdout:
+                    channel.sendall(result.stdout.replace("\n", "\r\n").encode())
+                if result.stderr:
+                    channel.sendall(result.stderr.replace("\n", "\r\n").encode())
+                channel.sendall(self.profile.prompt.encode())
+        _close_channel(channel)
+
+
+def _transport_active(channel) -> bool:
+    return (
+        not channel.closed
+        and channel.transport is not None
+        and channel.transport.is_active()
+    )
+
+
+def _close_channel(channel) -> None:
+    try:
+        channel.close()
+    except (EOFError, OSError):
+        pass
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
